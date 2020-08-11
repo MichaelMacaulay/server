@@ -50,7 +50,8 @@ use Sabre\VObject\Reader;
  *
  * @package OCA\DAV\CalDAV
  */
-class BirthdayService {
+class BirthdayService
+{
 	public const BIRTHDAY_CALENDAR_URI = 'contact_birthdays';
 
 	/** @var GroupPrincipalBackend */
@@ -381,12 +382,23 @@ class BirthdayService {
 		$objectUri = $book['uri'] . '-' . $cardUri . $type['postfix'] . '.ics';
 		$calendarData = $this->buildDateFromContact($cardData, $type['field'], $type['postfix']);
 		$existing = $this->calDavBackEnd->getCalendarObject($calendarId, $objectUri);
-		if (is_null($calendarData)) {
-			if (!is_null($existing)) {
+		if ($calendarData === null) {
+			if ($existing !== null) {
 				$this->calDavBackEnd->deleteCalendarObject($calendarId, $objectUri);
 			}
 		} else {
-			if (is_null($existing)) {
+			if ($existing === null) {
+				// not found by URI, but maybe by UID
+				// happens when a contact with birthday is moved to a different address book
+				$calendarInfo = $this->calDavBackEnd->getCalendarById($calendarId);
+				$extraData = $this->calDavBackEnd->getDenormalizedData($calendarData->serialize());
+				$existing2path = $this->calDavBackEnd->getCalendarObjectByUID($calendarInfo['principaluri'], $extraData['uid']);
+				if ($existing2path !== null) {
+					// delete the old birthday entry first so that we do not get duplicate UIDs
+					$existing2objectUri = substr($existing2path, strlen($calendarInfo['uri']) + 1);
+					$this->calDavBackEnd->deleteCalendarObject($calendarId, $existing2objectUri);
+				}
+
 				$this->calDavBackEnd->createCalendarObject($calendarId, $objectUri, $calendarData->serialize());
 			} else {
 				if ($this->birthdayEvenChanged($existing['calendardata'], $calendarData)) {
